@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code Snippet Explainer</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #111; }
+    main { max-width: 900px; margin: 0 auto; }
+    label { display: block; margin-bottom: 0.75rem; font-weight: 600; }
+    textarea, select { width: 100%; font: 1rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    textarea { min-height: 220px; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; }
+    select, button { padding: 0.65rem 0.85rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; background: #fff; }
+    button { cursor: pointer; margin-top: 0.5rem; font-weight: 700; }
+    #explanation-panel { min-height: 12rem; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.75rem; background: #f8fafc; white-space: pre-wrap; }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Code Snippet Explainer</h1>
+    <form id="explain-form" hx-post="/explain" hx-target="#explanation-panel" hx-swap="innerHTML" hx-include="[name='code'],[name='language'],[name='mode']">
+      <label for="code-input">Code</label>
+      <textarea id="code-input" name="code" rows="12" placeholder="Paste your code here..." required></textarea>
+
+      <label for="language-select">Language override</label>
+      <select id="language-select" name="language">
+        <option value="">Auto-detect language</option>
+        <option value="JavaScript">JavaScript</option>
+        <option value="TypeScript">TypeScript</option>
+        <option value="Python">Python</option>
+        <option value="Go">Go</option>
+        <option value="Rust">Rust</option>
+        <option value="Java">Java</option>
+        <option value="C">C</option>
+        <option value="C++">C++</option>
+        <option value="SQL">SQL</option>
+        <option value="Bash">Bash</option>
+      </select>
+
+      <label for="mode-select">Explanation mode</label>
+      <select id="mode-select" name="mode">
+        <option value="summary">Summary</option>
+        <option value="line-by-line">Line by line</option>
+      </select>
+
+      <button type="submit" hx-post="/explain" hx-target="#explanation-panel" hx-swap="innerHTML" hx-include="[name='code'],[name='language'],[name='mode']" hx-indicator="#spinner">Explain</button>
+      <span id="spinner">Loading...</span>
+    </form>
+
+    <div id="explanation-panel" aria-live="polite"></div>
+  </main>
+</body>
+</html>
