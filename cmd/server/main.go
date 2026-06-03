@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/yourname/code-snippet-explainer/internal/model"
 	"github.com/yourname/code-snippet-explainer/internal/service"
@@ -28,7 +30,10 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       textarea { min-height: 220px; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; }
       select, input { padding: 0.65rem 0.85rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; background: #fff; }
       button { padding: 0.75rem 1rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; background: #1f2937; color: #fff; cursor: pointer; font-weight: 700; }
-      #explanation { margin-top: 1.5rem; min-height: 12rem; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 0.75rem; background: #f8fafc; white-space: pre-wrap; }
+      #explanation { margin-top: 1.5rem; min-height: 12rem; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 0.75rem; background: #f8fafc; white-space: normal; word-break: break-word; }
+      .explanation { color: #111827; font-size: 1rem; line-height: 1.75; }
+      .explanation p { margin: 0; }
+      .error { display: block; color: #b91c1c; margin-top: 0.75rem; font-weight: 700; }
       .htmx-indicator { display: none; }
       .htmx-request .htmx-indicator { display: inline; }
     </style>
@@ -146,20 +151,38 @@ func explainHandler(explainer *service.Explainer) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 
-		fmt.Fprint(w, `<div class="explanation">`)
+		fmt.Fprint(w, `<div class="explanation"><p>`)
 		flusher.Flush()
 
+		printedFirstChunk := false
+		prevEndsWithSpace := false
 		err := explainer.ExplainStream(r.Context(), code, language, mode, func(chunk string) error {
-			fmt.Fprintf(w, "<p>%s</p>", html.EscapeString(chunk))
+			chunk = strings.ReplaceAll(chunk, "\r\n", "\n")
+			if mode == "summary" {
+				chunk = strings.ReplaceAll(chunk, "\n", " ")
+				chunk = strings.Join(strings.Fields(chunk), " ")
+			}
+			if mode == "summary" {
+				chunk = strings.TrimSpace(chunk)
+				if printedFirstChunk && chunk != "" && !prevEndsWithSpace {
+					fmt.Fprint(w, " ")
+				}
+			}
+			if chunk != "" {
+				fmt.Fprint(w, html.EscapeString(chunk))
+				printedFirstChunk = true
+				lastChar := chunk[len(chunk)-1]
+				prevEndsWithSpace = lastChar == ' ' || lastChar == '\t'
+			}
 			flusher.Flush()
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(w, "<p class=\"error\">%s</p>", html.EscapeString(err.Error()))
+			fmt.Fprintf(w, "<span class=\"error\">%s</span>", html.EscapeString(err.Error()))
 			flusher.Flush()
 		}
 
-		fmt.Fprint(w, `</div>`)
+		fmt.Fprint(w, `</p></div>`)
 		flusher.Flush()
 	}
 }
@@ -169,13 +192,26 @@ func main() {
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
+
+	// Startup health-check: verify Ollama base URL responds quickly
+	hcClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := hcClient.Get(ollamaURL)
+	if err != nil {
+		log.Fatalf("Ollama health check failed (%s): %v", ollamaURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Fatalf("Ollama health check returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
 	explainer := service.NewExplainer(ollamaURL)
 
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/explain", explainHandler(explainer))
 
-	addr := ":8081"
+	addr := ":8083"
 	log.Printf("Server starting on %s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server failed: %v", err)

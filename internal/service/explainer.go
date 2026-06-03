@@ -63,7 +63,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -71,14 +73,20 @@ import (
 type Explainer struct {
 	ollamaURL string
 	client    *http.Client
+	model     string
 }
 
 func NewExplainer(ollamaURL string) *Explainer {
+	model := os.Getenv("OLLAMA_MODEL")
+	if model == "" {
+		model = "llama3.2"
+	}
 	return &Explainer{
 		ollamaURL: strings.TrimRight(ollamaURL, "/"),
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second,
 		},
+		model: model,
 	}
 }
 func (e *Explainer) ExplainStream(ctx context.Context, code, language, mode string, onChunk func(string) error) error {
@@ -96,7 +104,7 @@ func (e *Explainer) ExplainStream(ctx context.Context, code, language, mode stri
 		code,
 	)
 	reqBody := map[string]interface{}{
-		"model":  "llama3.2",
+		"model":  e.model,
 		"stream": true,
 		"messages": []map[string]string{
 			{
@@ -125,6 +133,7 @@ func (e *Explainer) ExplainStream(ctx context.Context, code, language, mode stri
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("Ollama non-200 response: %d - %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 	scanner := bufio.NewScanner(resp.Body)
